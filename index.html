@@ -338,11 +338,31 @@ function App(){
   /* focus camera on selection */
   useEffect(()=>{const w=wRef.current;if(!w||!sel)return;const c=byIso[sel];if(!c)return;
     const feat=feats.find(f=>f.__c===c); if(!feat)return;
-    const b=feat.bbox||bboxOf(feat);if(b){const lng=(b[0]+b[2])/2,lat=(b[1]+b[3])/2;
-      w.controls().autoRotate=false;w.pointOfView({lat,lng,altitude:1.9},900);}},[sel]);
+    const p=repPoint(feat);if(p){
+      w.controls().autoRotate=false;w.pointOfView({lat:p.lat,lng:p.lng,altitude:1.9},900);}},[sel]);
 
-  function bboxOf(f){try{let xs=[],ys=[];const walk=co=>{if(typeof co[0]==='number'){xs.push(co[0]);ys.push(co[1]);}else co.forEach(walk);};
-    walk(f.geometry.coordinates);return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];}catch(e){return null;}}
+  /* representative point: centroid of the country's largest polygon (the mainland),
+     so overseas territories / antimeridian-crossing parts don't skew the camera. */
+  function repPoint(f){try{
+    const g=f.geometry; if(!g)return null;
+    const polys=g.type==='MultiPolygon'?g.coordinates:[g.coordinates];   // each: [outerRing, ...holes]
+    let best=null,bestArea=-1;
+    for(const poly of polys){
+      const ring=poly[0]; if(!ring||ring.length<3)continue;
+      let A=0,Cx=0,Cy=0;
+      for(let i=0;i<ring.length-1;i++){
+        const [x0,y0]=ring[i],[x1,y1]=ring[i+1];const cross=x0*y1-x1*y0;
+        A+=cross;Cx+=(x0+x1)*cross;Cy+=(y0+y1)*cross;
+      }
+      A*=0.5;
+      let cx,cy;
+      if(Math.abs(A)>1e-9){cx=Cx/(6*A);cy=Cy/(6*A);}
+      else{cx=ring.reduce((s,p)=>s+p[0],0)/ring.length;cy=ring.reduce((s,p)=>s+p[1],0)/ring.length;}
+      const area=Math.abs(A);
+      if(area>bestArea){bestArea=area;best={lng:cx,lat:cy};}
+    }
+    return best;
+  }catch(e){return null;}}
 
   const cur=sel?byIso[sel]:null;
 
