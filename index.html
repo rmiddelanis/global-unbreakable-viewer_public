@@ -200,16 +200,16 @@ const GREY     = '#dde4ea';   // countries not covered by the simulation
 const VARS={
   riskAssets:{label:'Risk to assets',short:'Assets',unit:'% GDP',stops:['#edf2f7','#9cc0d8','#2166ac'],bad:true,
     get:c=>c.riskAssets,fmt:v=>v.toFixed(2),
-    desc:'Expected annual asset losses from disasters, as a share of GDP.'},
+    desc:'Expected annual asset damages from disasters as a share of GDP.'},
   riskConsumption:{label:'Risk to consumption',short:'Consumption',unit:'% GDP',stops:['#f1eef6','#b3a2c7','#6a51a3'],bad:true,
     get:c=>c.riskConsumption,fmt:v=>v.toFixed(2),
-    desc:'Expected annual consumption losses, reflecting imperfect smoothing during recovery.'},
+    desc:'Expected annual consumption losses as a share of GDP.'},
   riskWellbeing:{label:'Risk to well-being',short:'Well-being',unit:'% GDP',stops:['#fdece8','#ec9a8d','#b2182b'],bad:true,
     get:c=>c.riskWellbeing,fmt:v=>v.toFixed(2),
-    desc:'Expected annual well-being (welfare) losses — losses to poor households are weighted more heavily. Always exceeds asset losses.'},
+    desc:'Expected annual well-being losses as a share of GDP.'},
   resilience:{label:'Socio-economic resilience',short:'Resilience',unit:'%',stops:['#eef6f3','#86c0ad','#1b7a5f'],bad:false,
     get:c=>c.resilience,fmt:v=>v.toFixed(0),
-    desc:'Ratio of asset losses to well-being losses. Higher = a population maintains well-being despite larger asset losses.'},
+    desc:'Ratio of asset damages to well-being losses. Higher = a population maintains well-being despite larger asset damages.'},
 };
 const VAR_KEYS=Object.keys(VARS);
 
@@ -556,8 +556,8 @@ function CountryPanel({c,vk,onClose}){
       </div>
 
       <div className="note">Source: baseline simulation outputs (<code>simulation_data/0_baseline</code>),
-        Global Unbreakable model. Socio-economic resilience = expected asset losses ÷ expected
-        well-being losses; well-being losses always exceed asset losses because they weight
+        Global Unbreakable model. Socio-economic resilience = expected asset damages ÷ expected
+        well-being losses; well-being losses always exceed asset damages because they weight
         impacts on poorer households more heavily.</div>
     </div>
   </>);
@@ -603,7 +603,7 @@ function reportHTML(title,V,rows){
   <h1>${title}</h1><div class="sub">Unbreakable Explorer · ${V.label} view · baseline simulation · generated ${new Date().toLocaleDateString()}</div>
   <table>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
   <div class="ft">Generated from the Global Unbreakable baseline simulation outputs. Socio-economic resilience is
-  the ratio of expected asset losses to expected well-being losses; well-being losses always exceed asset losses
+  the ratio of expected asset damages to expected well-being losses; well-being losses always exceed asset damages
   because they weight the impact on poorer households more heavily.</div>`;
 }
 
