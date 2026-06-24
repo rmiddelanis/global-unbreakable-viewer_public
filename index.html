@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Unbreakable Explorer</title>
 <!--
   Unbreakable Explorer — globe frontend for the Global Unbreakable
@@ -175,6 +175,32 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .note{font-size:11px;color:var(--ink-3);line-height:1.5;margin-top:18px;border-top:1px solid var(--line-2);padding-top:12px;}
   ::-webkit-scrollbar{width:9px;height:9px;} ::-webkit-scrollbar-thumb{background:#d4dce2;border-radius:5px;border:2px solid var(--panel);}
+
+  /* ---------- responsive: stack globe over a bottom-sheet panel ---------- */
+  @media (max-width:820px){
+    header.bar{flex-wrap:wrap;gap:9px 14px;padding:10px 14px;}
+    .brand .sub{display:none;}
+    .grow{display:none;}
+    .ctrl{order:2;margin-left:auto;}
+    .ctrl select{max-width:46vw;}
+    .seg{order:3;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    .seg::-webkit-scrollbar{height:0;}
+    /* globe fills the top, panel takes the bottom */
+    #globe{right:0;bottom:54%;}
+    .sidebar{top:auto;bottom:0;left:0;right:0;width:auto;height:54%;
+      border-radius:16px 16px 0 0;box-shadow:0 -10px 40px rgba(20,32,43,.16);}
+    .legend{left:10px;right:auto;top:10px;bottom:auto;width:44%;max-width:230px;padding:9px 11px;}
+    .legend .desc{display:none;}
+    .hint{display:none;}
+  }
+  @media (max-width:480px){
+    #globe{bottom:58%;}
+    .sidebar{height:58%;}
+    .ov-scroll,.dr-body{padding-left:16px;padding-right:16px;}
+    .seg button{padding:7px 10px;font-size:12px;}
+    .dr-country{font-size:20px;}
+    .mgrid{grid-template-columns:1fr 1fr;}
+  }
 </style>
 </head>
 <body>
