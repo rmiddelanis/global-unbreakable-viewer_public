@@ -196,13 +196,13 @@ const GREY     = '#dde4ea';   // countries not covered by the simulation
    All values arrive already scaled in explorer_data.json:
    risk_to_* are expressed as % of GDP, resilience as %. */
 const VARS={
-  riskAssets:{label:'Risk to assets',short:'Assets',unit:'% GDP',stops:['#edf2f7','#9cc0d8','#2166ac'],bad:true,
+  riskAssets:{label:'Risk to assets',short:'Assets',unit:'% GDP',stops:['#edf2f7','#9cc0d8','#2166ac'],bad:true,log:true,
     get:c=>c.riskAssets,fmt:v=>v.toFixed(2),
     desc:'Expected annual asset damages from disasters as a share of GDP.'},
-  riskConsumption:{label:'Risk to consumption',short:'Consumption',unit:'% GDP',stops:['#f1eef6','#b3a2c7','#6a51a3'],bad:true,
+  riskConsumption:{label:'Risk to consumption',short:'Consumption',unit:'% GDP',stops:['#f1eef6','#b3a2c7','#6a51a3'],bad:true,log:true,
     get:c=>c.riskConsumption,fmt:v=>v.toFixed(2),
     desc:'Expected annual consumption losses as a share of GDP.'},
-  riskWellbeing:{label:'Risk to well-being',short:'Well-being',unit:'% GDP',stops:['#fdece8','#ec9a8d','#b2182b'],bad:true,
+  riskWellbeing:{label:'Risk to well-being',short:'Well-being',unit:'% GDP',stops:['#fdece8','#ec9a8d','#b2182b'],bad:true,log:true,
     get:c=>c.riskWellbeing,fmt:v=>v.toFixed(2),
     desc:'Expected annual well-being losses as a share of GDP.'},
   resilience:{label:'Socio-economic resilience',short:'Resilience',unit:'%',stops:['#eef6f3','#86c0ad','#1b7a5f'],bad:false,
@@ -271,15 +271,21 @@ function App(){
   const domain=useMemo(()=>{
     if(!countries.length)return [0,1];
     const vals=countries.map(c=>V.get(c)).sort((a,b)=>a-b);
-    const lo=vals[Math.floor(vals.length*0.04)], hi=vals[Math.floor(vals.length*0.96)];
-    return [lo,hi];
+    return [vals[0], vals[vals.length-1]];         // true min / max
   },[countries,vk]);
+
+  /* normalised [0,1] position of a value on the current scale (log for skewed
+     risk metrics, linear otherwise). Shared by the globe, legend and box plots. */
+  const scaleT=(v)=>{
+    if(V.log){const a=Math.log(domain[0]),b=Math.log(domain[1]);
+      return (Math.log(Math.max(v,1e-12))-a)/(b-a);}
+    return (v-domain[0])/(domain[1]-domain[0]);
+  };
 
   const colorFor=(c)=>{
     if(!c)return GREY;                              // not covered by the simulation
-    let t=(V.get(c)-domain[0])/(domain[1]-domain[0]);
     if(hiGroup){const g=groupBy==='inc'?c.incomeGroup:c.region; if(g!==hiGroup)return '#e6ebef';}
-    return ramp(V.stops,t);
+    return ramp(V.stops,scaleT(V.get(c)));
   };
 
   /* init globe once feats ready */
@@ -429,9 +435,11 @@ function App(){
           <h4>{V.label}</h4>
           <div className="desc">{V.desc}</div>
           <div className="ramp" style={{background:`linear-gradient(90deg,${V.stops.join(',')})`}}></div>
-          <div className="scale mono"><span>{V.fmt(domain[0])}{V.unit==='%'?'%':''}</span><span>{V.unit!=='%'?V.unit:''}</span><span>{V.fmt(domain[1])}{V.unit==='%'?'%':''}</span></div>
+          <div className="scale mono"><span>{V.fmt(domain[0])}{V.unit==='%'?'%':''}</span>
+            <span>{V.log?V.fmt(Math.exp((Math.log(domain[0])+Math.log(domain[1]))/2))+(V.unit==='%'?'%':''):(V.unit!=='%'?V.unit:'')}</span>
+            <span>{V.fmt(domain[1])}{V.unit==='%'?'%':''}</span></div>
           <div className="polar"><span className="dirdot" style={{background:V.stops[V.stops.length-1]}}></span>
-            Darker = {V.bad?'higher risk / worse':'more resilient / better'}</div>
+            Darker = {V.bad?'higher risk / worse':'more resilient / better'}{V.unit!=='%'?' · '+V.unit:''}{V.log?' · log scale':''}</div>
           <div className="greyrow"><i></i>Grey = not covered by the simulation</div>
         </div>}
 
@@ -449,7 +457,7 @@ function App(){
             <button className={groupBy==='region'?'on':''} onClick={()=>{setGroupBy('region');setHiGroup(null);}}>By region</button>
           </div>
           {groups.map(g=>{
-            const pos=v=>Math.max(0,Math.min(100,(v-domain[0])/(domain[1]-domain[0])*100));
+            const pos=v=>Math.max(0,Math.min(100,scaleT(v)*100));
             const lo=pos(g.loW),hi=pos(g.hiW),b1=pos(g.q1),b3=pos(g.q3),md=pos(g.med);
             return (
             <div key={g.key} className={'barrow'+(hiGroup&&hiGroup!==g.key?' dim':'')}
@@ -461,7 +469,7 @@ function App(){
                 <div className="cap" style={{left:lo+'%'}}></div>
                 <div className="cap" style={{left:hi+'%'}}></div>
                 <div className="box" style={{left:b1+'%',width:(b3-b1)+'%',
-                  background:ramp(V.stops,(g.med-domain[0])/(domain[1]-domain[0])),opacity:.85}}></div>
+                  background:ramp(V.stops,scaleT(g.med)),opacity:.85}}></div>
                 <div className="median" style={{left:md+'%'}}></div>
               </div>
             </div>
