@@ -95,6 +95,7 @@
     box-shadow:0 18px 50px rgba(20,32,43,.16);display:flex;flex-direction:column;z-index:25;
   }
   .ov-scroll{overflow:auto;padding:20px 22px 28px;flex:1;}
+  .ov-jump{width:100%;margin:0 0 16px;}
   .ov-title{font-family:'IBM Plex Serif',serif;font-size:15px;font-weight:600;color:var(--ink);margin:0 0 16px;
     padding-bottom:13px;border-bottom:1px solid var(--line-2);letter-spacing:-.01em;}
   .ov-h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:0 0 2px;}
@@ -176,44 +177,44 @@
   .note{font-size:11px;color:var(--ink-3);line-height:1.5;margin-top:18px;border-top:1px solid var(--line-2);padding-top:12px;}
   ::-webkit-scrollbar{width:9px;height:9px;} ::-webkit-scrollbar-thumb{background:#d4dce2;border-radius:5px;border:2px solid var(--panel);}
 
-  /* ---------- responsive: stack three non-overlapping bands ----------
-     globe (top) · legend bar · bottom-sheet panel. --sheet = panel height,
-     --legbar = legend-bar height; the globe fills whatever is left above them,
-     so nothing overlaps. */
+  /* ---------- responsive: full-bleed globe + overlay sheet ----------
+     The globe is fixed below the header and fills the width; the overview /
+     country sheet starts low (peeking) and scrolls up OVER the globe.
+     --head-h is measured in JS; --peek is the globe band left visible. */
   @media (max-width:820px){
-    .stage{--sheet:54%;--legbar:88px;}
     header.bar{flex-wrap:wrap;gap:9px 14px;padding:10px 14px;}
     .brand .sub{display:none;}
     .grow{display:none;}
-    .ctrl{order:2;margin-left:auto;}
-    .ctrl select{max-width:46vw;}
     .seg{order:3;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
     .seg::-webkit-scrollbar{height:0;}
-    /* globe ends above the legend bar; legend bar sits above the sheet */
-    #globe{right:0;bottom:calc(var(--sheet) + var(--legbar));}
-    .legend{left:0;right:0;top:auto;bottom:var(--sheet);width:auto;max-width:none;height:var(--legbar);
-      border-radius:0;border-left:0;border-right:0;box-shadow:none;backdrop-filter:none;
-      background:rgba(255,255,255,.96);padding:9px 16px;overflow:hidden;
-      display:flex;flex-direction:column;justify-content:center;gap:3px;}
-    .legend h4{font-size:11.5px;margin:0;}
+
+    /* the stage becomes the scroll container; globe is fixed behind it */
+    .stage{--peek:56vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+    #globe,.stage-grad{position:fixed;left:0;right:0;top:var(--head-h,84px);bottom:0;z-index:0;}
+
+    /* legend: compact overlay pinned just under the header, over the globe */
+    .legend{position:fixed;left:10px;right:auto;top:calc(var(--head-h,84px) + 10px);bottom:auto;
+      width:auto;max-width:62vw;padding:9px 11px;z-index:3;}
     .legend .desc{display:none;}
-    .legend .ramp{margin-top:2px;}
-    .legend .polar,.legend .greyrow{margin-top:3px;padding-top:0;border-top:0;}
     .legend .greyrow{display:none;}
-    .sidebar{top:auto;bottom:0;left:0;right:0;width:auto;height:var(--sheet);
-      border-radius:16px 16px 0 0;box-shadow:0 -10px 40px rgba(20,32,43,.16);}
+
+    /* sheet flows in the scroll container, offset down so the globe shows */
+    .sidebar{position:relative;top:auto;right:auto;left:auto;bottom:auto;
+      width:auto;height:auto;min-height:calc(100vh - var(--head-h,84px));
+      margin-top:var(--peek);border-radius:18px 18px 0 0;z-index:5;
+      box-shadow:0 -12px 40px rgba(20,32,43,.18);}
+    .ov-scroll{overflow:visible;flex:none;padding:18px 18px 44px;}
+    .dr-body{overflow:visible;}
     .hint{display:none;}
   }
   @media (max-width:480px){
-    .stage{--sheet:56%;--legbar:64px;}
-    .ov-scroll,.dr-body{padding-left:16px;padding-right:16px;}
+    .stage{--peek:60vh;}
     .seg button{padding:7px 10px;font-size:12px;}
     .dr-country{font-size:20px;}
     .mgrid{grid-template-columns:1fr 1fr;}
-    .legend{padding:8px 14px;}
+    .legend{max-width:70vw;padding:8px 11px;}
     .legend .ramp{height:8px;}
     .legend .scale{font-size:9.5px;}
-    .legend .polar{display:none;}   /* keep the bar short on small phones */
   }
 </style>
 </head>
@@ -290,6 +291,7 @@ function App(){
   const [groupBy,setGroupBy]=useState('inc');   // inc | region
   const [hiGroup,setHiGroup]=useState(null);    // highlighted group value
   const elRef=useRef(), wRef=useRef();
+  const headRef=useRef(), stageRef=useRef(), sheetRef=useRef();
 
   /* load simulation data + country polygons */
   useEffect(()=>{(async()=>{
@@ -330,6 +332,24 @@ function App(){
 
   /* init globe once feats ready */
   const hoverRef=useRef(null);
+
+  /* expose the header height as --head-h so the fixed mobile globe/legend
+     sit exactly below it (no hard-coded guess). */
+  useEffect(()=>{
+    const set=()=>{if(headRef.current)document.documentElement.style.setProperty('--head-h',headRef.current.offsetHeight+'px');};
+    set();window.addEventListener('resize',set);
+    const ro=headRef.current?new ResizeObserver(set):null;ro&&ro.observe(headRef.current);
+    return ()=>{window.removeEventListener('resize',set);ro&&ro.disconnect();};
+  },[feats,data]);
+
+  /* mobile: when a country is picked, slide the bottom sheet up over the globe;
+     when cleared, scroll back down to reveal the globe. */
+  useEffect(()=>{
+    if(window.innerWidth>820)return;
+    if(sel&&sheetRef.current)sheetRef.current.scrollIntoView({behavior:'smooth',block:'start'});
+    else if(!sel&&stageRef.current)stageRef.current.scrollTo({top:0,behavior:'smooth'});
+  },[sel]);
+
   useEffect(()=>{
     if(!feats||!elRef.current||wRef.current)return;
     const w=Globe()(elRef.current)
@@ -445,7 +465,7 @@ function App(){
 
   return (
     <div className="app">
-      <header className="bar">
+      <header className="bar" ref={headRef}>
         <div className="brand">
           <span className="mark">Un<b>break</b>able<span style={{color:'var(--ink-3)',fontWeight:500}}> Explorer</span></span>
           <span className="sub">Disaster resilience atlas · baseline</span>
@@ -454,15 +474,9 @@ function App(){
           {VAR_KEYS.map(k=><button key={k} className={k===vk?'on':''} onClick={()=>setVk(k)}>{VARS[k].label}</button>)}
         </div>
         <div className="grow"></div>
-        <div className="ctrl">
-          <select value={sel||''} onChange={e=>setSel(e.target.value||null)}>
-            <option value="">Jump to country…</option>
-            {[...countries].sort((a,b)=>a.name.localeCompare(b.name)).map(c=><option key={c.iso} value={c.iso}>{c.name}</option>)}
-          </select>
-        </div>
       </header>
 
-      <div className="stage">
+      <div className="stage" ref={stageRef}>
         <div id="globe" ref={elRef}></div>
         <div className="stage-grad"></div>
         {!ready&&!err&&<div className="loading"><div className="spinner"></div>Loading baseline simulation…</div>}
@@ -484,10 +498,14 @@ function App(){
         </div>}
 
         {/* unified sidebar: global overview OR country profile */}
-        {ready&&<aside className="sidebar">
+        {ready&&<aside className="sidebar" ref={sheetRef}>
         {cur ? <CountryPanel c={cur} vk={vk} onClose={()=>setSel(null)}/>
         : <div className="ov-scroll">
           <p className="ov-title">Global overview</p>
+          <select className="ov-jump" value={sel||''} onChange={e=>setSel(e.target.value||null)}>
+            <option value="">Jump to country…</option>
+            {[...countries].sort((a,b)=>a.name.localeCompare(b.name)).map(c=><option key={c.iso} value={c.iso}>{c.name}</option>)}
+          </select>
           <p className="ov-h">Global median · {V.label}</p>
           <div className="ov-stat mono">{V.fmt(globalMedian)}<span className="u">{V.unit}</span></div>
           <div className="ov-sub">{countries.length} countries simulated · {data.framework}</div>
