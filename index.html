@@ -269,6 +269,7 @@ function App(){
 
   const countries = data?data.countries:[];
   const V=VARS[vk];
+  const vkRef=useRef(vk); vkRef.current=vk;   // current metric for the (once-registered) hover handler
   const domain=useMemo(()=>{
     if(!countries.length)return [0,1];
     const vals=countries.map(c=>V.get(c)).sort((a,b)=>a-b);
@@ -319,9 +320,9 @@ function App(){
     if(f){
       tip.style.opacity=1;
       const nm=f.properties.NAME_LONG||f.properties.NAME||f.properties.ADMIN||'';
-      if(f.__c){const c=f.__c;
+      if(f.__c){const c=f.__c;const Vh=VARS[vkRef.current];
         tip.innerHTML=`<b>${c.name}</b><div class="meta">${c.incomeLabel} · ${c.regionLabel}</div>
-          <div style="margin-top:4px">${V.label}: <span class="v">${V.fmt(V.get(c))}${V.unit==='%'?'%':' '+V.unit}</span></div>`;
+          <div style="margin-top:4px">${Vh.label}: <span class="v">${Vh.fmt(Vh.get(c))}${Vh.unit==='%'?'%':' '+Vh.unit}</span></div>`;
       }else{
         tip.innerHTML=`<b>${nm}</b><div class="na">Not covered by the simulation</div>`;
       }
@@ -364,13 +365,13 @@ function App(){
     else arr.sort((a,b)=>b.med-a.med);
     return arr;
   },[countries,groupBy,vk]);
-  const globalAvg=countries.length?countries.reduce((a,c)=>a+V.get(c),0)/countries.length:0;
+  const globalMedian=countries.length?quantile(countries.map(c=>V.get(c)).sort((a,b)=>a-b),0.5):0;
 
   const ranked=useMemo(()=>[...countries].sort((a,b)=>V.get(b)-V.get(a)),[countries,vk]);
 
   /* report */
   function downloadReport(){
-    const rows=cur?reportCountry(cur):reportGlobal(V,globalAvg,groups,ranked,groupBy,data);
+    const rows=cur?reportCountry(cur):reportGlobal(V,globalMedian,groups,ranked,groupBy,data);
     const html=reportHTML(cur?cur.name:'Global overview',V,rows);
     const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);a.download=`unbreakable-${(cur?cur.name:'global').toLowerCase().replace(/\W+/g,'-')}.html`;a.click();
@@ -394,7 +395,6 @@ function App(){
             <option value="">Jump to country…</option>
             {[...countries].sort((a,b)=>a.name.localeCompare(b.name)).map(c=><option key={c.iso} value={c.iso}>{c.name}</option>)}
           </select>
-          <button className="btn primary" onClick={downloadReport} disabled={!ready}>↓ Download report</button>
         </div>
       </header>
 
@@ -422,8 +422,8 @@ function App(){
         {cur ? <CountryPanel c={cur} vk={vk} onClose={()=>setSel(null)}/>
         : <div className="ov-scroll">
           <p className="ov-title">Global overview</p>
-          <p className="ov-h">Global average · {V.label}</p>
-          <div className="ov-stat mono">{V.fmt(globalAvg)}<span className="u">{V.unit}</span></div>
+          <p className="ov-h">Global median · {V.label}</p>
+          <div className="ov-stat mono">{V.fmt(globalMedian)}<span className="u">{V.unit}</span></div>
           <div className="ov-sub">{countries.length} countries simulated · {data.framework}</div>
 
           <div className="grp-tabs">
@@ -462,7 +462,7 @@ function App(){
             {ranked.slice(0,5).map((c,i)=><div key={c.iso} className="rank" onClick={()=>setSel(c.iso)}>
               <span className="nm"><span className="ix">{i+1}</span>{c.name}</span><span className="rv">{V.fmt(V.get(c))}{V.unit==='%'?'%':''}</span></div>)}
             <h5 style={{marginTop:12}}>{V.bad?'Lowest':'Bottom'} — {V.short}</h5>
-            {ranked.slice(-5).reverse().map((c,i)=><div key={c.iso} className="rank" onClick={()=>setSel(c.iso)}>
+            {ranked.slice(-5).map((c,i)=><div key={c.iso} className="rank" onClick={()=>setSel(c.iso)}>
               <span className="nm"><span className="ix">{ranked.length-4+i}</span>{c.name}</span><span className="rv">{V.fmt(V.get(c))}{V.unit==='%'?'%':''}</span></div>)}
           </div>
         </div>}
@@ -476,9 +476,8 @@ function App(){
 
 /* ---------- country profile panel ---------- */
 function CountryPanel({c,vk,onClose}){
-  const [qv,setQv]=useState('riskWellbeing'); // quintile metric
   const metricKeys=['riskAssets','riskConsumption','riskWellbeing','resilience'];
-  const Q=QVARS[qv];
+  const Q=QVARS.incomeShare;                 // quintile breakdown shows income share only
   const hasQuint=c.quint&&c.quint.length;
   const qvals=hasQuint?c.quint.map(Q.get):[];
   const qmax=hasQuint?Math.max(...qvals,1e-9):1;
@@ -508,13 +507,7 @@ function CountryPanel({c,vk,onClose}){
         })}
       </div>
 
-      <div className="sec-t qhead"><span>Breakdown by household income</span>
-        <select value={qv} onChange={e=>setQv(e.target.value)}>
-          <option value="riskWellbeing">Risk to well-being</option>
-          <option value="riskAssets">Risk to assets</option>
-          <option value="incomeShare">Income share</option>
-        </select>
-      </div>
+      <div className="sec-t"><span>Income share by household quintile</span></div>
       {hasQuint?<>
       <div className="quint">
         {c.quint.map(q=>(
@@ -526,9 +519,7 @@ function CountryPanel({c,vk,onClose}){
         ))}
       </div>
       <div style={{fontSize:11,color:'var(--ink-3)',marginTop:6,lineHeight:1.4}}>
-        {qv==='incomeShare'
-          ? 'Income quintiles, poorest (Q1) to richest (Q5).'
-          : 'Each quintile’s share of the national '+Q.label.toLowerCase()+' (the five bars sum to the country total). Poorer households typically bear a disproportionate share of well-being losses despite owning fewer assets — the core Unbreakable insight.'}
+        Income quintiles, poorest (Q1) to richest (Q5).
       </div>
       </>:<div style={{fontSize:11.5,color:'var(--ink-3)'}}>No quintile breakdown available for this country.</div>}
 
@@ -574,7 +565,7 @@ function reportCountry(c){
   return rows;
 }
 function reportGlobal(V,avg,groups,ranked,groupBy,data){
-  const rows=[['Indicator',V.label],['Global average',V.fmt(avg)+(V.unit==='%'?'%':' '+V.unit)],['Countries',ranked.length]];
+  const rows=[['Indicator',V.label],['Global median',V.fmt(avg)+(V.unit==='%'?'%':' '+V.unit)],['Countries',ranked.length]];
   rows.push(['— Grouped by',groupBy==='inc'?'income group':'region']);
   groups.forEach(g=>rows.push([g.label+' (median · IQR)',
     V.fmt(g.med)+'  ['+V.fmt(g.q1)+'–'+V.fmt(g.q3)+']'+(V.unit==='%'?'%':' '+V.unit)]));
