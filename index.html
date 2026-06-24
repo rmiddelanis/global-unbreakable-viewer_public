@@ -350,6 +350,15 @@ function App(){
     else if(!sel&&stageRef.current)stageRef.current.scrollTo({top:0,behavior:'smooth'});
   },[sel]);
 
+  /* touch: the globe's hover tooltip has no pointerleave, so clear it when the
+     finger lifts or the sheet is scrolled (otherwise it lingers on mobile). */
+  useEffect(()=>{
+    const hideTip=()=>{const t=document.getElementById('tip');if(t)t.style.opacity=0;hoverRef.current=null;};
+    window.addEventListener('touchend',hideTip,{passive:true});
+    const st=stageRef.current; st&&st.addEventListener('scroll',hideTip,{passive:true});
+    return ()=>{window.removeEventListener('touchend',hideTip);st&&st.removeEventListener('scroll',hideTip);};
+  },[]);
+
   useEffect(()=>{
     if(!feats||!elRef.current||wRef.current)return;
     const w=Globe()(elRef.current)
@@ -612,7 +621,11 @@ function CountryPanel({c,vk,onClose}){
         <h5><span className="badge">Not in baseline</span> Policy scenarios unavailable</h5>
         <p>The <code>0_baseline</code> output directory contains only the no-policy baseline run
           (all policy levers neutral in <code>settings.yml</code>). Resilience policies cannot be
-          explored here because the required outputs are not pre-computed. </p>
+          explored here because the required outputs are not pre-computed. To enable this panel:</p>
+        <ul>
+          <li>run the model with the desired <code>policy_params</code> scenarios, then</li>
+          <li>load the resulting per-country policy outputs alongside the baseline.</li>
+        </ul>
       </div>
 
       <div className="note">Source: baseline simulation outputs (<code>simulation_data/0_baseline</code>),
