@@ -557,8 +557,7 @@ function CountryPanel({c,vk,onClose}){
 
       <div className="note">Source: baseline simulation outputs (<code>simulation_data/0_baseline</code>),
         Global Unbreakable model. Socio-economic resilience = expected asset damages ÷ expected
-        well-being losses; well-being losses always exceed asset damages because they weight
-        impacts on poorer households more heavily.</div>
+        well-being losses.</div>
     </div>
   </>);
 }
@@ -603,8 +602,7 @@ function reportHTML(title,V,rows){
   <h1>${title}</h1><div class="sub">Unbreakable Explorer · ${V.label} view · baseline simulation · generated ${new Date().toLocaleDateString()}</div>
   <table>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
   <div class="ft">Generated from the Global Unbreakable baseline simulation outputs. Socio-economic resilience is
-  the ratio of expected asset damages to expected well-being losses; well-being losses always exceed asset damages
-  because they weight the impact on poorer households more heavily.</div>`;
+  the ratio of expected asset damages to expected well-being losses.</div>`;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
