@@ -209,7 +209,7 @@ const VARS={
     desc:'Expected annual well-being (welfare) losses — losses to poor households are weighted more heavily. Always exceeds asset losses.'},
   resilience:{label:'Socio-economic resilience',short:'Resilience',unit:'%',stops:['#eef6f3','#86c0ad','#1b7a5f'],bad:false,
     get:c=>c.resilience,fmt:v=>v.toFixed(0),
-    desc:'Ratio of asset losses to well-being losses (0–100%). Higher = a population maintains well-being despite larger asset losses.'},
+    desc:'Ratio of asset losses to well-being losses. Higher = a population maintains well-being despite larger asset losses.'},
 };
 const VAR_KEYS=Object.keys(VARS);
 
@@ -537,9 +537,8 @@ function CountryPanel({c,vk,onClose}){
 
       <div className="note">Source: baseline simulation outputs (<code>simulation_data/0_baseline</code>),
         Global Unbreakable model. Socio-economic resilience = expected asset losses ÷ expected
-        well-being losses (0–100%); well-being losses always exceed asset losses because they weight
-        impacts on poorer households more heavily. Data quality:
-        {' '}{c.totalInputs?`${c.totalInputs-c.imputedInputs}/${c.totalInputs} inputs measured, ${c.imputedInputs} imputed.`:'n/a.'}</div>
+        well-being losses; well-being losses always exceed asset losses because they weight
+        impacts on poorer households more heavily.</div>
     </div>
   </>);
 }
@@ -561,7 +560,6 @@ function reportCountry(c){
     const lab=['Poorest','Q2','Q3','Q4','Richest'];
     c.quint.forEach(q=>rows.push([lab[q.q-1]+' (income '+q.incomeShare.toFixed(0)+'%)',q.riskWellbeing.toFixed(3)]));
   }
-  rows.push(['Data quality',(c.totalInputs-c.imputedInputs)+'/'+c.totalInputs+' inputs measured, '+c.imputedInputs+' imputed']);
   return rows;
 }
 function reportGlobal(V,avg,groups,ranked,groupBy,data){
