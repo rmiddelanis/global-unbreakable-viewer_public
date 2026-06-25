@@ -94,6 +94,7 @@
     border:1px solid var(--line);border-radius:16px;overflow:hidden;
     box-shadow:0 18px 50px rgba(20,32,43,.16);display:flex;flex-direction:column;z-index:25;
   }
+  .sheet-grab{display:none;}   /* drag handle — mobile only (see responsive block) */
   .ov-scroll{overflow:auto;padding:20px 22px 28px;flex:1;}
   .ov-jump{width:100%;margin:0 0 16px;}
   .ov-title{font-family:'IBM Plex Serif',serif;font-size:15px;font-weight:600;color:var(--ink);margin:0 0 16px;
@@ -180,17 +181,36 @@
   /* ---------- responsive: full-bleed globe + overlay sheet ----------
      The globe is fixed below the header and fills the width; the overview /
      country sheet starts low (peeking) and scrolls up OVER the globe.
-     --head-h is measured in JS; --peek is the globe band left visible. */
-  @media (max-width:820px){
+     --head-h is measured in JS; --peek is the globe band left visible.
+
+     The breakpoint deliberately matches on EITHER a narrow width (portrait
+     phones) OR a short landscape screen, so a medium phone turned sideways
+     keeps this stacked layout instead of dropping to the desktop layout.
+     Keep MOBILE_MQ in the script in sync with this query. */
+  @media (max-width:820px), (orientation:landscape) and (max-height:600px){
     header.bar{flex-wrap:wrap;gap:9px 14px;padding:10px 14px;}
     .brand .sub{display:none;}
     .grow{display:none;}
     .seg{order:3;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
     .seg::-webkit-scrollbar{height:0;}
 
-    /* the stage becomes the scroll container; globe is fixed behind it */
-    .stage{--peek:56vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+    /* the stage becomes the scroll container; globe is fixed behind it.
+       --peek leaves the globe filling the screen with only the sheet header
+       (drag handle + title) peeking up from the bottom edge. */
+    .stage{--peek:calc(100vh - var(--head-h,84px) - 86px);
+      --peek:calc(100dvh - var(--head-h,84px) - 86px);
+      overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
     #globe,.stage-grad{position:fixed;left:0;right:0;top:var(--head-h,84px);bottom:0;z-index:0;}
+
+    /* sheet header: drag bar + stretched up-chevron, sticky so it stays
+       reachable once the sheet is scrolled up over the globe. */
+    .sheet-grab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+      padding:10px 0 9px;position:sticky;top:0;z-index:6;background:var(--panel);
+      border-radius:18px 18px 0 0;border-bottom:1px solid var(--line-2);cursor:pointer;
+      -webkit-tap-highlight-color:transparent;}
+    .sheet-grab::before{content:'';width:44px;height:5px;border-radius:3px;background:#cfd8df;}
+    .sheet-grab::after{content:'';width:36px;height:9px;background:var(--ink-3);opacity:.6;
+      clip-path:polygon(50% 0,100% 66%,91% 100%,50% 30%,9% 100%,0 66%);}
 
     /* legend: compact overlay pinned just under the header, over the globe */
     .legend{position:fixed;left:10px;right:auto;top:calc(var(--head-h,84px) + 10px);bottom:auto;
@@ -199,8 +219,9 @@
     .legend .greyrow{display:none;}
 
     /* sheet flows in the scroll container, offset down so the globe shows */
-    .sidebar{position:relative;top:auto;right:auto;left:auto;bottom:auto;
+    .sidebar{position:relative;top:auto;right:auto;left:auto;bottom:auto;overflow:visible;
       width:auto;height:auto;min-height:calc(100vh - var(--head-h,84px));
+      min-height:calc(100dvh - var(--head-h,84px));
       margin-top:var(--peek);border-radius:18px 18px 0 0;z-index:5;
       box-shadow:0 -12px 40px rgba(20,32,43,.18);}
     .ov-scroll{overflow:visible;flex:none;padding:18px 18px 44px;}
