@@ -229,7 +229,6 @@
     .hint{display:none;}
   }
   @media (max-width:480px){
-    .stage{--peek:60vh;}
     .seg button{padding:7px 10px;font-size:12px;}
     .dr-country{font-size:20px;}
     .mgrid{grid-template-columns:1fr 1fr;}
@@ -301,6 +300,13 @@ function featIso(p){
   return null;
 }
 
+/* Single source of truth for "are we in the stacked mobile layout?".
+   Mirrors the CSS @media query so JS behaviour (hover tooltip, sheet
+   auto-scroll) stays consistent with the layout — including when a phone is
+   held in landscape (narrow width OR short landscape screen). */
+const MOBILE_MQ='(max-width:820px), (orientation:landscape) and (max-height:600px)';
+const isMobile=()=>window.matchMedia(MOBILE_MQ).matches;
+
 /* ============================ APP ============================ */
 function App(){
   const [feats,setFeats]=useState(null);
@@ -366,10 +372,17 @@ function App(){
   /* mobile: when a country is picked, slide the bottom sheet up over the globe;
      when cleared, scroll back down to reveal the globe. */
   useEffect(()=>{
-    if(window.innerWidth>820)return;
+    if(!isMobile())return;
     if(sel&&sheetRef.current)sheetRef.current.scrollIntoView({behavior:'smooth',block:'start'});
     else if(!sel&&stageRef.current)stageRef.current.scrollTo({top:0,behavior:'smooth'});
   },[sel]);
+
+  /* tap the sheet header to toggle between peeking and fully scrolled-up */
+  const toggleSheet=()=>{
+    const st=stageRef.current,sh=sheetRef.current;if(!st||!sh)return;
+    if(st.scrollTop>10)st.scrollTo({top:0,behavior:'smooth'});
+    else sh.scrollIntoView({behavior:'smooth',block:'start'});
+  };
 
   useEffect(()=>{
     if(!feats||!elRef.current||wRef.current)return;
@@ -402,7 +415,7 @@ function App(){
     hoverRef.current=f;const w=wRef.current;if(!w)return;
     w.polygonAltitude(ff=>ff===f?0.045:0.012);
     const tip=document.getElementById('tip');
-    if(window.innerWidth<=820){tip.style.opacity=0;return;}   // no hover tooltip on mobile / touch
+    if(isMobile()){tip.style.opacity=0;return;}   // no hover tooltip on mobile / touch
     if(f){
       tip.style.opacity=1;
       const nm=f.properties.NAME_LONG||f.properties.NAME||f.properties.ADMIN||'';
@@ -521,6 +534,7 @@ function App(){
 
         {/* unified sidebar: global overview OR country profile */}
         {ready&&<aside className="sidebar" ref={sheetRef}>
+        <div className="sheet-grab" onClick={toggleSheet} role="button" aria-label="Expand or collapse panel"></div>
         {cur ? <CountryPanel c={cur} vk={vk} onClose={()=>setSel(null)}/>
         : <div className="ov-scroll">
           <p className="ov-title">Global overview</p>
