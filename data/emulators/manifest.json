@@ -1,0 +1,76 @@
+{
+  "features": [
+    "scale_exposure",
+    "exposure_q1",
+    "scale_vulnerability",
+    "vulnerability_q1",
+    "scale_self_employment",
+    "scale_non_diversified_income",
+    "scale_gini_index",
+    "pds_covered_loss_share",
+    "pds_none",
+    "pds_uniform",
+    "pds_proportional"
+  ],
+  "countries": [
+    "ARG",
+    "BLR",
+    "EGY",
+    "EST",
+    "MNG"
+  ],
+  "levers": [
+    {
+      "key": "scale_exposure",
+      "label": "Exposure reduction",
+      "min": 0.75,
+      "scope": true
+    },
+    {
+      "key": "scale_vulnerability",
+      "label": "Vulnerability reduction",
+      "min": 0.75,
+      "scope": true
+    },
+    {
+      "key": "scale_self_employment",
+      "label": "Self-employment reduction",
+      "min": 0.5,
+      "scope": false
+    },
+    {
+      "key": "scale_non_diversified_income",
+      "label": "Income diversification",
+      "min": 0.5,
+      "scope": false
+    },
+    {
+      "key": "scale_gini_index",
+      "label": "Income equalization",
+      "min": 0.0,
+      "scope": false
+    }
+  ],
+  "pds": {
+    "variants": [
+      "none",
+      "uniform",
+      "proportional"
+    ],
+    "labels": {
+      "none": "None",
+      "uniform": "Post-disaster support",
+      "proportional": "Insurance"
+    },
+    "covered_range": [
+      0.0,
+      0.75
+    ]
+  },
+  "outputs": [
+    "dk_tot",
+    "dWtot_currency",
+    "dc_tot"
+  ],
+  "note": "In-browser Matern-2.5 GP emulators; predict relative policy effect (ratio-anchored to baseline)."
+}

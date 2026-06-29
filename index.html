@@ -234,6 +234,24 @@
     .legend .ramp{height:8px;}
     .legend .scale{font-size:9.5px;}
   }
+  /* ---- policy what-if controls ---- */
+  .whatif{margin-left:8px;font-size:10px;font-weight:600;color:#2166ac;background:#eaf1f8;border:1px solid #cfe0ef;border-radius:10px;padding:1px 7px;vertical-align:middle;text-transform:none;letter-spacing:0;}
+  .mbase{font-size:10.5px;color:var(--ink-3);margin-top:3px;}
+  .mbase .up{color:#1b7a5f;font-weight:600;} .mbase .dn{color:#b2182b;font-weight:600;}
+  .polbox{display:flex;flex-direction:column;gap:11px;}
+  .polhint{font-size:11.5px;color:var(--ink-3);line-height:1.45;}
+  .pol-row{display:flex;flex-direction:column;gap:5px;}
+  .pol-lab{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-1,#1c2733);font-weight:500;gap:8px;}
+  .pol-val{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#2166ac;font-weight:600;white-space:nowrap;}
+  .scope-tog{display:inline-flex;margin-left:8px;border:1px solid #d3dce4;border-radius:7px;overflow:hidden;vertical-align:middle;}
+  .scope-tog button{border:0;background:#f3f6f9;color:var(--ink-3);font-size:10.5px;padding:2px 7px;cursor:pointer;}
+  .scope-tog button.on{background:#2166ac;color:#fff;}
+  .pol-row input[type=range]{width:100%;accent-color:#2166ac;height:4px;cursor:pointer;}
+  .pds-sel{width:100%;padding:6px 8px;border:1px solid #d3dce4;border-radius:8px;font:inherit;font-size:12.5px;background:#fff;color:inherit;}
+  .polfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px;}
+  .pol-reset{border:1px solid #d3dce4;background:#fff;border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;color:#1c2733;}
+  .pol-reset:disabled{opacity:.45;cursor:default;}
+  .polnote{font-size:10.5px;color:var(--ink-3);text-align:right;line-height:1.3;}
 </style>
 </head>
 <body>
@@ -298,6 +316,67 @@ function featIso(p){
   return null;
 }
 
+/* ===================== POLICY EMULATOR (in-browser Matern-2.5 GP) =====================
+   Each country has a small JSON (data/emulators/{iso}.json) carrying a fitted Gaussian-process
+   emulator. We evaluate its predictive mean here — identical math to the Python emulator (verified
+   to <1e-9). Outputs are absolute losses; the UI applies them as RATIOS to the baseline so the
+   displayed baseline never shifts and only the policy effect is emulated. */
+const EMU_CACHE={};                                    // iso -> Promise<emulator JSON>
+const SQRT5=Math.sqrt(5);
+function neutralPolicy(){
+  return {scale_exposure:1,exposure_scope:'all',scale_vulnerability:1,vulnerability_scope:'all',
+    scale_self_employment:1,scale_non_diversified_income:1,scale_gini_index:1,
+    pds_variant:'uniform',pds_covered_loss_share:0};  // aid type is a toggle; 0% coverage = no aid
+}
+function isNeutral(p){const n=neutralPolicy();return Object.keys(n).every(k=>p[k]===n[k]);}
+function featurizePolicy(p,features){
+  const aid=p.pds_variant!=='none'&&p.pds_covered_loss_share>0;   // 0% coverage = no aid (matches the model)
+  const cov=aid?p.pds_covered_loss_share:0;
+  const m={scale_exposure:p.scale_exposure, exposure_q1:p.exposure_scope==='q1'?1:0,
+    scale_vulnerability:p.scale_vulnerability, vulnerability_q1:p.vulnerability_scope==='q1'?1:0,
+    scale_self_employment:p.scale_self_employment, scale_non_diversified_income:p.scale_non_diversified_income,
+    scale_gini_index:p.scale_gini_index, pds_covered_loss_share:cov,
+    pds_none:aid?0:1, pds_uniform:(aid&&p.pds_variant==='uniform')?1:0,
+    pds_proportional:(aid&&p.pds_variant==='proportional')?1:0};
+  return features.map(f=>m[f]);
+}
+function gpPredict(emu,out,xScaled){
+  const o=emu.outputs[out], ls=o.length_scale, X=emu.Xtrain, alpha=o.alpha, C=o.C;
+  let yn=0;
+  for(let i=0;i<X.length;i++){const row=X[i]; let d2=0;
+    for(let k=0;k<xScaled.length;k++){const t=(xScaled[k]-row[k])/ls[k]; d2+=t*t;}
+    const d=Math.sqrt(d2);
+    yn+=C*(1+SQRT5*d+5*d2/3)*Math.exp(-SQRT5*d)*alpha[i];
+  }
+  return Math.exp(o.ymean+o.ystd*yn);
+}
+function predictLosses(emu,policy,features){
+  const sc=emu.scaler, x=featurizePolicy(policy,features);
+  const xs=x.map((v,k)=>(v-sc.mean[k])/sc.scale[k]);
+  const r={}; for(const out in emu.outputs) r[out]=gpPredict(emu,out,xs); return r;
+}
+function emuSelftest(emu,features){
+  let worst=0;
+  for(const c of (emu._selftest||[])){const got=predictLosses(emu,c.policy,features);
+    for(const k in c.expected) worst=Math.max(worst,Math.abs(got[k]-c.expected[k])/Math.abs(c.expected[k]));}
+  console[(worst<1e-6)?'log':'error']('emulator selftest '+emu.iso+': worst rel err '+worst.toExponential(2));
+}
+function loadEmulator(iso,features){
+  if(!EMU_CACHE[iso]){
+    EMU_CACHE[iso]=fetch('./data/emulators/'+iso+'.json')
+      .then(r=>{if(!r.ok)throw new Error('no emulator');return r.json();})
+      .then(e=>{emuSelftest(e,features);return e;});
+  }
+  return EMU_CACHE[iso];
+}
+/* ratio-anchored adjusted metrics: baseline country metrics scaled by the emulator's relative change */
+function adjustedMetrics(c,emu,policy,features){
+  const b=predictLosses(emu,neutralPolicy(),features), p=predictLosses(emu,policy,features);
+  const rk=p.dk_tot/b.dk_tot, rw=p.dWtot_currency/b.dWtot_currency, rc=p.dc_tot/b.dc_tot;
+  return {...c, riskAssets:c.riskAssets*rk, riskWellbeing:c.riskWellbeing*rw,
+          riskConsumption:c.riskConsumption*rc, resilience:c.resilience*rk/rw};
+}
+
 /* Single source of truth for "are we in the stacked mobile layout?".
    Mirrors the CSS @media query so JS behaviour (hover tooltip, sheet
    auto-scroll) stays consistent with the layout — including when a phone is
@@ -310,9 +389,10 @@ function App(){
   const [feats,setFeats]=useState(null);
   const [data,setData]=useState(null);          // explorer_data.json
   const [byIso,setByIso]=useState({});
+  const [manifest,setManifest]=useState(null);  // data/emulators/manifest.json (policy emulators)
   const [err,setErr]=useState(null);
   const [vk,setVk]=useState('resilience');
-  const [sel,setSel]=useState(null);            // iso
+  const [sel,setSel]=useState(()=>{const h=(location.hash||'').replace('#','').toUpperCase();return h||null;}); // iso (deep-linkable via #ISO3)
   const [groupBy,setGroupBy]=useState('inc');   // inc | region
   const [hiGroup,setHiGroup]=useState(null);    // highlighted group value
   const elRef=useRef(), wRef=useRef();
@@ -329,8 +409,15 @@ function App(){
       const fs=(g.features||[]).filter(f=>{const n=f.properties.NAME||f.properties.ADMIN;return n&&n!=='Antarctica';});
       fs.forEach(f=>{const iso=featIso(f.properties); f.__c=iso?bi[iso]||null:null;});
       setData(d);setByIso(bi);setFeats(fs);
+      /* policy emulators are optional: load the manifest if present, ignore if absent */
+      fetch('./data/emulators/manifest.json').then(r=>r.ok?r.json():null).then(m=>setManifest(m)).catch(()=>{});
     }catch(e){setErr(e.message);}
   })();},[]);
+
+  /* keep the URL hash in sync with the selected country (shareable deep links: index.html#ARG) */
+  useEffect(()=>{const h=sel?('#'+sel):'';
+    if((location.hash||'')!==h) history.replaceState(null,'',location.pathname+location.search+h);
+  },[sel]);
 
   const countries = data?data.countries:[];
   const V=VARS[vk];
@@ -533,7 +620,8 @@ function App(){
         {/* unified sidebar: global overview OR country profile */}
         {ready&&<aside className="sidebar" ref={sheetRef}>
         <div className="sheet-grab" onClick={toggleSheet} role="button" aria-label="Expand or collapse panel"></div>
-        {cur ? <CountryPanel c={cur} vk={vk} onClose={()=>setSel(null)}/>
+        {cur ? <CountryPanel c={cur} vk={vk} onClose={()=>setSel(null)}
+                 hasEmu={!!(manifest&&manifest.countries.includes(cur.iso))} manifest={manifest}/>
         : <div className="ov-scroll">
           <p className="ov-title">Global overview</p>
           <select className="ov-jump" value={sel||''} onChange={e=>setSel(e.target.value||null)}>
@@ -593,13 +681,32 @@ function App(){
 }
 
 /* ---------- country profile panel ---------- */
-function CountryPanel({c,vk,onClose}){
+function CountryPanel({c,vk,onClose,hasEmu,manifest}){
   const metricKeys=['riskAssets','riskConsumption','riskWellbeing','resilience'];
   const Q=QVARS.incomeShare;                 // quintile breakdown shows income share only
   const hasQuint=c.quint&&c.quint.length;
   const qvals=hasQuint?c.quint.map(Q.get):[];
   const qmax=hasQuint?Math.max(...qvals,1e-9):1;
   const qlabels=['Poorest','Q2','Q3','Q4','Richest'];
+
+  /* policy what-if state (lazy-loads the country's emulator) */
+  const [policy,setPolicy]=useState(neutralPolicy());
+  const [emu,setEmu]=useState(null);
+  useEffect(()=>{
+    setPolicy(neutralPolicy()); setEmu(null);
+    if(hasEmu&&manifest){let live=true;
+      loadEmulator(c.iso,manifest.features).then(e=>{if(live)setEmu(e);}).catch(()=>{});
+      return ()=>{live=false;};}
+  },[c.iso,hasEmu]);
+  const adjusted=useMemo(()=>emu?adjustedMetrics(c,emu,policy,manifest.features):c,[c,emu,policy,manifest]);
+  const active=!!emu&&metricKeys.some(k=>Math.abs(VARS[k].get(adjusted)-VARS[k].get(c))>1e-9);
+
+  const setLever=(k,v)=>setPolicy(p=>({...p,[k]:v}));
+  const setScope=(key,scope)=>{
+    const sf=key==='scale_exposure'?'exposure_scope':'vulnerability_scope';
+    const floor=(emu&&emu.q1_floor[key])||0.75;
+    setPolicy(p=>({...p,[sf]:scope,[key]:(scope==='q1'&&p[key]<floor)?floor:p[key]}));
+  };
 
   return (<>
     <div className="dr-head">
@@ -614,13 +721,15 @@ function CountryPanel({c,vk,onClose}){
       </div>
     </div>
     <div className="dr-body">
-      <div className="sec-t">Risk &amp; resilience profile</div>
+      <div className="sec-t">Risk &amp; resilience profile{active&&<span className="whatif">policy what-if</span>}</div>
       <div className="mgrid">
         {metricKeys.map(k=>{
-          const Vk=VARS[k];
+          const Vk=VARS[k]; const av=Vk.get(adjusted), bv=Vk.get(c);
+          const chg=active&&Math.abs(av-bv)>1e-9;
           return (<div key={k} className={'metric'+(k===vk?' active':'')}>
             <div className="ml">{Vk.label}</div>
-            <div className="mv">{Vk.fmt(Vk.get(c))}<span className="u">{Vk.unit}</span></div>
+            <div className="mv">{Vk.fmt(av)}<span className="u">{Vk.unit}</span></div>
+            {chg&&<div className="mbase">baseline {Vk.fmt(bv)}{Vk.unit==='%'?'%':''} <span className={((av>bv)===Vk.bad)?'dn':'up'}>{av>bv?'▲':'▼'} {Vk.fmt(Math.abs(av-bv))}</span></div>}
           </div>);
         })}
       </div>
@@ -642,16 +751,54 @@ function CountryPanel({c,vk,onClose}){
       </>:<div style={{fontSize:11.5,color:'var(--ink-3)'}}>No quintile breakdown available for this country.</div>}
 
       <div className="sec-t">Policy simulation</div>
-      <div className="unavail">
-        <h5><span className="badge">Not in baseline</span> Policy scenarios unavailable</h5>
-        <p>The <code>0_baseline</code> output directory contains only the no-policy baseline run
-          (all policy levers neutral in <code>settings.yml</code>). Resilience policies cannot be
-          explored here because the required outputs are not pre-computed.</p>
-      </div>
+      {hasEmu ? (!emu ? <div className="unavail"><p>Loading policy emulator…</p></div> :
+        <div className="polbox">
+          <div className="polhint">Dial in resilience policies — the four metrics update live via this
+            country's emulator (≈ the full model, validated to within a few %). Any combination works.</div>
+          {manifest.levers.map(lv=>{
+            const sf=lv.key==='scale_exposure'?'exposure_scope':(lv.key==='scale_vulnerability'?'vulnerability_scope':null);
+            const scope=sf?policy[sf]:'all';
+            const floor=(lv.scope&&scope==='q1'&&emu.q1_floor[lv.key])?emu.q1_floor[lv.key]:lv.min;
+            const maxRed=Math.round((1-floor)*1000)/10;
+            const red=Math.round((1-policy[lv.key])*1000)/10;
+            return (<div className="pol-row" key={lv.key}>
+              <div className="pol-lab"><span>{lv.label}
+                {lv.scope&&<span className="scope-tog">
+                  <button className={scope==='all'?'on':''} onClick={()=>setScope(lv.key,'all')}>All</button>
+                  <button className={scope==='q1'?'on':''} onClick={()=>setScope(lv.key,'q1')}>Poorest 20%</button>
+                </span>}</span>
+                <span className="pol-val">{red>0?'−'+red+'%':'—'}</span></div>
+              <input type="range" min="0" max={maxRed} step="0.5" value={red}
+                onChange={e=>setLever(lv.key,Math.round((1-(+e.target.value)/100)*1e6)/1e6)}/>
+            </div>);
+          })}
+          <div className="pol-row">
+            <div className="pol-lab"><span>Disaster aid
+              <span className="scope-tog">
+                <button className={policy.pds_variant!=='proportional'?'on':''} onClick={()=>setPolicy(p=>({...p,pds_variant:'uniform'}))}>Post-disaster support</button>
+                <button className={policy.pds_variant==='proportional'?'on':''} onClick={()=>setPolicy(p=>({...p,pds_variant:'proportional'}))}>Insurance</button>
+              </span></span>
+              <span className="pol-val">{policy.pds_covered_loss_share>0?Math.round(policy.pds_covered_loss_share*100)+'%':'—'}</span></div>
+            <input type="range" min="0" max={Math.round(manifest.pds.covered_range[1]*100)} step="1"
+              value={Math.round(policy.pds_covered_loss_share*100)}
+              onChange={e=>setLever('pds_covered_loss_share',(+e.target.value)/100)}/>
+          </div>
+          <div className="polfoot">
+            <button className="pol-reset" disabled={!active} onClick={()=>setPolicy(neutralPolicy())}>Reset to baseline</button>
+            <span className="polnote">Country-level effect; quintile chart shows the baseline distribution.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="unavail">
+          <h5><span className="badge">Not available</span> Policy scenarios unavailable</h5>
+          <p>No policy emulator is bundled for this country yet. Countries that ship an emulator
+            (<code>data/emulators/&lt;ISO3&gt;.json</code>) expose interactive resilience policies here —
+            adding more is just a matter of dropping in their emulator data.</p>
+        </div>
+      )}
 
-      <div className="note">Source: baseline simulation outputs (<code>simulation_data/0_baseline</code>),
-        Global Unbreakable model. Socio-economic resilience = expected asset damages ÷ expected
-        well-being losses.</div>
+      <div className="note">{hasEmu?'Policy effects are emulated from the Global Unbreakable model (per-country Gaussian-process surrogate); baseline from ':'Source: baseline simulation outputs ('}
+        <code>simulation_data/0_baseline</code>{hasEmu?'.':')'} Socio-economic resilience = expected asset damages ÷ expected well-being losses.</div>
     </div>
   </>);
 }
